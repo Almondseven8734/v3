@@ -18,7 +18,7 @@ const crypto = require('crypto');
 const VOTIFIER_PORT  = parseInt(process.env.VOTIFIER_PORT || '8192');
 const VOTIFIER_TOKEN = process.env.VOTIFIER_TOKEN || 'changeme-set-in-railway-vars';
 const POLL_SECRET    = process.env.POLL_SECRET    || 'changeme-set-in-railway-vars';
-const HTTP_PORT      = parseInt(process.env.PORT  || '3000');
+const HTTP_PORT      = parseInt(process.env.PORT  || '3001');
 
 // ─── Pending vote queue ───────────────────────────────────────────────────────
 // { username, service, timestamp, claimed }
