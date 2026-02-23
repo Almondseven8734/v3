@@ -136,7 +136,7 @@ const httpServer = http.createServer((req, res) => {
     }
 
     // ── POST /test — inject a test vote manually ──────────────────────────────
-    if (req.method === 'GET' && url.pathname === '/test') {
+    if ((req.method === 'POST' || req.method === 'GET') && url.pathname === '/test') {
         const user = url.searchParams.get('user') || 'TestPlayer';
         voteQueue.push({
             username:  user,
