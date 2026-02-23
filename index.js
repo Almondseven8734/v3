@@ -6,7 +6,7 @@ const path   = require('path');
 
 const VOTIFIER_PORT  = parseInt(process.env.VOTIFIER_PORT || '25565');
 const POLL_SECRET    = process.env.POLL_SECRET    || 'changeme';
-const HTTP_PORT      = parseInt(process.env.PORT  || '8192');
+const HTTP_PORT = parseInt(process.env.PORT || '8080');
 const KEY_PATH       = path.join('/tmp', 'votifier_private.pem');
 const PUBKEY_PATH    = path.join('/tmp', 'votifier_public.pem');
 
