@@ -1,10 +1,13 @@
 {
   "name": "votifier-bridge",
   "version": "1.0.0",
-  "description": "Receives Votifier packets and forwards votes to BDS via ScriptAPI",
+  "description": "Votifier bridge for BDS",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "votifier-server": "^1.0.3"
   },
   "engines": {
     "node": ">=18"
