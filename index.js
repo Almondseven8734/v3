@@ -2,9 +2,9 @@ const net    = require('net');
 const http   = require('http');
 const crypto = require('crypto');
 
-const VOTIFIER_PORT = parseInt(process.env.VOTIFIER_PORT || '28967');
-const POLL_SECRET   = process.env.POLL_SECRET || 'changeme';
-const HTTP_PORT     = parseInt(process.env.PORT || '8080');
+const POLL_SECRET    = process.env.POLL_SECRET    || 'changeme';
+const HTTP_PORT      = parseInt(process.env.PORT  || '8080');
+const VOTIFIER_PORT  = 25000; // hardcoded, never conflicts with Railway's PORT
 
 const voteQueue = [];
 let privateKey = null;
@@ -30,16 +30,13 @@ function parseV2(data) {
 function extractVote(data) {
     const v2 = parseV2(data);
     if (v2 && v2.username) return { username: v2.username, service: v2.serviceName || 'unknown' };
-
     if (privateKey) {
         for (const size of [data.length, 256, 128]) {
             if (data.length >= size && size >= 64) {
                 const dec = decryptV1(data.slice(0, size));
                 if (dec) {
                     const parts = dec.split('\n');
-                    if (parts[0] === 'VOTE' && parts[2]) {
-                        return { username: parts[2].trim(), service: parts[1] || 'unknown' };
-                    }
+                    if (parts[0] === 'VOTE' && parts[2]) return { username: parts[2].trim(), service: parts[1] || 'unknown' };
                 }
             }
         }
@@ -47,25 +44,22 @@ function extractVote(data) {
     return null;
 }
 
-// ─── HTTP server starts FIRST ─────────────────────────────────────────────────
+// ─── HTTP starts first ────────────────────────────────────────────────────────
 http.createServer((req, res) => {
     const url    = new URL(req.url, 'http://localhost');
     const secret = url.searchParams.get('secret');
 
     if (url.pathname === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', uptime: Math.floor(process.uptime()), queued: voteQueue.filter(v => !v.claimed).length, keysReady: !!privateKey }));
+        res.end(JSON.stringify({ status: 'ok', uptime: Math.floor(process.uptime()), queued: voteQueue.filter(v => !v.claimed).length }));
         return;
     }
-
     if (url.pathname === '/publickey') {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end(publicKey || 'Keys not yet generated');
+        res.end(publicKey || 'generating...');
         return;
     }
-
     if (secret !== POLL_SECRET) { res.writeHead(401); res.end('Unauthorized'); return; }
-
     if (url.pathname === '/votes') {
         const unclaimed = voteQueue.filter(v => !v.claimed);
         unclaimed.forEach(v => v.claimed = true);
@@ -75,7 +69,6 @@ http.createServer((req, res) => {
         console.log(`[POLL] Returned ${unclaimed.length} vote(s)`);
         return;
     }
-
     if (url.pathname === '/test') {
         const user = url.searchParams.get('user') || 'TestPlayer';
         voteQueue.push({ username: user, service: 'manual-test', timestamp: Date.now(), claimed: false });
@@ -84,14 +77,12 @@ http.createServer((req, res) => {
         res.end(`Queued test vote for ${user}`);
         return;
     }
-
     res.writeHead(404);
     res.end('Not found');
 }).listen(HTTP_PORT, '0.0.0.0', () => {
     console.log(`[HTTP] Listening on :${HTTP_PORT}`);
 
-    // Generate RSA keys AFTER HTTP is listening
-    console.log('[KEYS] Generating RSA key pair...');
+    // Generate keys after HTTP is up
     crypto.generateKeyPair('rsa', {
         modulusLength: 2048,
         publicKeyEncoding:  { type: 'spki',  format: 'pem' },
@@ -100,10 +91,9 @@ http.createServer((req, res) => {
         if (err) { console.error('[KEYS] Error:', err); return; }
         publicKey  = pub;
         privateKey = priv;
-        console.log('[KEYS] Done. Public key:');
+        console.log('[KEYS] RSA keys ready.');
         console.log(publicKey);
-
-        // Start Votifier AFTER keys are ready
+        // Start Votifier after keys ready
         votifier.listen(VOTIFIER_PORT, '0.0.0.0', () => console.log(`[VOTIFIER] Listening on :${VOTIFIER_PORT}`));
     });
 });
@@ -111,17 +101,11 @@ http.createServer((req, res) => {
 // ─── Votifier TCP server ──────────────────────────────────────────────────────
 const votifier = net.createServer((socket) => {
     console.log(`[VOTIFIER] Connection from ${socket.remoteAddress}`);
-
     const challenge = crypto.randomBytes(16).toString('hex');
-    const handshakeJson = JSON.stringify({ v: '2.9', challenge });
-    socket.write(`VOTIFIER 2.9 ${handshakeJson}\n`);
-
+    socket.write(`VOTIFIER 2.9 ${JSON.stringify({ v: '2.9', challenge })}\n`);
     socket.setTimeout(10000);
     const chunks = [];
-    socket.on('data', c => {
-        chunks.push(c);
-        console.log(`[VOTIFIER] Chunk: ${c.length} bytes`);
-    });
+    socket.on('data', c => { chunks.push(c); console.log(`[VOTIFIER] Chunk: ${c.length} bytes`); });
     socket.on('timeout', () => { console.warn('[VOTIFIER] Timed out'); socket.destroy(); });
     socket.on('error', e => console.error('[VOTIFIER] socket error:', e.message));
     socket.on('end', () => {
@@ -141,11 +125,11 @@ const votifier = net.createServer((socket) => {
 votifier.on('error', e => {
     console.error('[VOTIFIER] server error:', e.message);
     if (e.code === 'EADDRINUSE') {
-        console.log('[VOTIFIER] Port busy, retrying in 3s...');
+        console.log('[VOTIFIER] Port busy, retrying in 5s...');
         setTimeout(() => {
             votifier.close();
             votifier.listen(VOTIFIER_PORT, '0.0.0.0', () => console.log(`[VOTIFIER] Listening on :${VOTIFIER_PORT}`));
-        }, 3000);
+        }, 5000);
     }
 });
 
