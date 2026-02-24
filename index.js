@@ -54,27 +54,7 @@ function extractVote(data) {
     return null;
 }
 
-// ─── Votifier TCP server ──────────────────────────────────────────────────────
-const votifier = net.createServer((socket) => {
-    console.log(`[VOTIFIER] Connection from ${socket.remoteAddress}`);
-    socket.write(`VOTIFIER 2.9 ${crypto.randomBytes(8).toString('hex')}\n`);
-    socket.setTimeout(8000);
-    const chunks = [];
-    socket.on('data', c => chunks.push(c));
-    socket.on('timeout', () => socket.destroy());
-    socket.on('error', e => console.error('[VOTIFIER] socket error:', e.message));
-    socket.on('end', () => {
-        const data = Buffer.concat(chunks);
-        const vote = extractVote(data);
-        if (!vote) { console.warn(`[VOTIFIER] Could not parse packet (${data.length} bytes)`); return; }
-        console.log(`[VOTE] ${vote.username} voted!`);
-        voteQueue.push({ username: vote.username, service: vote.service, timestamp: Date.now(), claimed: false });
-    });
-});
-votifier.listen(VOTIFIER_PORT, '0.0.0.0', () => console.log(`[VOTIFIER] Listening on :${VOTIFIER_PORT}`));
-votifier.on('error', e => console.error('[VOTIFIER] server error:', e.message));
-
-// ─── HTTP server ──────────────────────────────────────────────────────────────
+// ─── HTTP server (starts first so Railway can route to it) ────────────────────
 http.createServer((req, res) => {
     const url    = new URL(req.url, 'http://localhost');
     const secret = url.searchParams.get('secret');
@@ -116,6 +96,36 @@ http.createServer((req, res) => {
     res.end('Not found');
 }).listen(HTTP_PORT, '0.0.0.0', () => {
     console.log(`[HTTP] Listening on :${HTTP_PORT}`);
+});
+
+// ─── Votifier TCP server (starts after HTTP) ──────────────────────────────────
+const votifier = net.createServer((socket) => {
+    console.log(`[VOTIFIER] Connection from ${socket.remoteAddress}`);
+    socket.write(`VOTIFIER 2.9 ${crypto.randomBytes(8).toString('hex')}\n`);
+    socket.setTimeout(8000);
+    const chunks = [];
+    socket.on('data', c => chunks.push(c));
+    socket.on('timeout', () => socket.destroy());
+    socket.on('error', e => console.error('[VOTIFIER] socket error:', e.message));
+    socket.on('end', () => {
+        const data = Buffer.concat(chunks);
+        const vote = extractVote(data);
+        if (!vote) { console.warn(`[VOTIFIER] Could not parse packet (${data.length} bytes)`); return; }
+        console.log(`[VOTE] ${vote.username} voted!`);
+        voteQueue.push({ username: vote.username, service: vote.service, timestamp: Date.now(), claimed: false });
+    });
+});
+
+votifier.listen(VOTIFIER_PORT, '0.0.0.0', () => console.log(`[VOTIFIER] Listening on :${VOTIFIER_PORT}`));
+votifier.on('error', e => {
+    console.error('[VOTIFIER] server error:', e.message);
+    if (e.code === 'EADDRINUSE') {
+        console.log('[VOTIFIER] Port busy, retrying in 3s...');
+        setTimeout(() => {
+            votifier.close();
+            votifier.listen(VOTIFIER_PORT, '0.0.0.0', () => console.log(`[VOTIFIER] Listening on :${VOTIFIER_PORT}`));
+        }, 3000);
+    }
 });
 
 console.log('[Votifier Bridge] Started!');
