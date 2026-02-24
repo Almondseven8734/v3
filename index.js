@@ -1,4 +1,3 @@
-cat > /home/claude/votifier-bridge/index.js << 'EOF'
 const net    = require('net');
 const http   = require('http');
 const crypto = require('crypto');
@@ -120,5 +119,3 @@ http.createServer((req, res) => {
 });
 
 console.log('[Votifier Bridge] Started!');
-EOF
-echo "Done"
