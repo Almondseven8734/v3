@@ -41,16 +41,38 @@ function parseV2(data) {
 
 // ─── Extract vote ─────────────────────────────────────────────────────────────
 function extractVote(data) {
+    // Try v2 first
     const v2 = parseV2(data);
     if (v2?.username) return { username: v2.username, service: v2.serviceName || 'unknown' };
 
-    if (data.length >= 256) {
-        const dec = decryptV1(data.slice(0, 256));
-        if (dec) {
-            const parts = dec.split('\n');
+    // Try v1 RSA — attempt on any size >= 128 bytes
+    if (data.length >= 128) {
+        // Try full buffer first
+        const dec1 = decryptV1(data);
+        if (dec1) {
+            const parts = dec1.split('\n');
+            if (parts[0] === 'VOTE' && parts[2]) return { username: parts[2].trim(), service: parts[1] || 'unknown' };
+        }
+        // Try first 256 bytes
+        if (data.length >= 256) {
+            const dec2 = decryptV1(data.slice(0, 256));
+            if (dec2) {
+                const parts = dec2.split('\n');
+                if (parts[0] === 'VOTE' && parts[2]) return { username: parts[2].trim(), service: parts[1] || 'unknown' };
+            }
+        }
+        // Try first 128 bytes
+        const dec3 = decryptV1(data.slice(0, 128));
+        if (dec3) {
+            const parts = dec3.split('\n');
             if (parts[0] === 'VOTE' && parts[2]) return { username: parts[2].trim(), service: parts[1] || 'unknown' };
         }
     }
+
+    // Last resort — try to find username in raw bytes
+    const raw = data.toString('utf8', 0, data.length);
+    console.log('[VOTIFIER] Raw packet (first 100 chars):', raw.slice(0, 100).replace(/[^\x20-\x7E]/g, '?'));
+
     return null;
 }
 
